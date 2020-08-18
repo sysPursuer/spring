@@ -701,3 +701,49 @@ a(slf4j+logback):spring(commons-logging),hiberbate(jboss-logging),Mybatis...
   ![img5](./images/img5.png)
 
 * 如果我们要引入其他框架？一定要把这个框架的默认日志依赖移除掉
+
+  **引用SpringBoot能自动适配所有的日志，而且底层使用slf4j+logback的方式记录日志，引入其他框架的时候只需要把这个框架依赖的日志框架排除掉。**
+
+## 3.4日志使用
+
+```java
+Logger logger = LoggerFactory.getLogger(getClass());
+    @Test
+    void contextLoads() {
+        //日志的级别由低到高 trace<debug<info<warn<error
+        //可以调整输出的日志级别，日志就会在这个级别及以上的高级别生效
+        logger.trace("这是trace日志...");
+        logger.debug("这是debug日志...");
+        //没有指定，springBoot默认使用info级别,
+        logger.info("这是info日志...");
+        logger.warn("这是warn日志...");
+        logger.error("这是error日志...");
+    }
+```
+
+```html
+<!-- 日志输出格式
+    %d表示日期时间
+    %thread表示线程名
+    %-5level表示从左显示5个字符宽度
+    %logger{50}表示logger名字最长50个字符，否则按照句点分割
+    %msg日志消息
+    %n换行符 -->
+```
+
+springBoot修改日志的默认配置
+
+```properties
+logging.level.com.sinvie.springboot=debug
+#不指定路径，则在当前项目下生成springboot.log
+#logging.file.name=springboot.log
+#在当前磁盘根路径下创建spring文件夹和里面的log文件夹，，使用spring.log作为默认文件名
+logging.file.path=/spring/log
+
+#在控制台输出的日志的格式
+logging.pattern.console=%d{yyyy-MM-dd} [%thread] %-5level %logger{50} - %msg%n
+#指定文件中日志输出的格式
+logging.pattern.file=%d{yyyy-MM-dd} [%thread] %-5level %logger{50} - %msg%n
+
+```
+
