@@ -2,9 +2,12 @@
 
 ## 1. springBoo简介
 
+[SpringBoot官方文档](https://docs.spring.io/spring-boot/docs/2.3.2.RELEASE/reference/htmlsingle/)
+
     简化Spring应用开发的一个框架；
     整个Spring技术栈的一个大整合；
     J2EE开发的一站式解决方案。
+
 
 ## 2. 微服务
 
@@ -706,6 +709,8 @@ a(slf4j+logback):spring(commons-logging),hiberbate(jboss-logging),Mybatis...
 
 ## 3.4日志使用
 
+#### 默认配置
+
 ```java
 Logger logger = LoggerFactory.getLogger(getClass());
     @Test
@@ -746,4 +751,274 @@ logging.pattern.console=%d{yyyy-MM-dd} [%thread] %-5level %logger{50} - %msg%n
 logging.pattern.file=%d{yyyy-MM-dd} [%thread] %-5level %logger{50} - %msg%n
 
 ```
+
+#### 指定配置
+
+在类路径下每个日志框架自己的配置文件即可，springBoot就不使用默认配置
+
+| Logging System          | Customization                                                |
+| :---------------------- | :----------------------------------------------------------- |
+| Logback                 | `logback-spring.xml`, `logback-spring.groovy`, `logback.xml`, or `logback.groovy` |
+| Log4j2                  | `log4j2-spring.xml` or `log4j2.xml`                          |
+| JDK (Java Util Logging) | `logging.properties`                                         |
+
+`logback.xml`直接被日志框架识别；
+
+`logback-spring.xml`日志框架就不直接加载日志的配置项，而是由SpringBoot加载解析日志配置，可以使用SpringBoot的高级Profile功能
+
+```xml
+<springProfile name="staging">
+    <!-- configuration to be enabled when the "staging" profile is active -->
+</springProfile>
+<!--可以指定某段配置只在某个环境下生效-->
+```
+
+否则
+
+```xml
+no application action for [springProfile]
+```
+
+### 3.5切换日志框架
+
+按照slf4j的日志是配图，进行相关的切换‘
+
+slf4j+log4j的方式，先exclusion后include
+
+## 四、Web开发
+
+### 4.1使用SpringBoot
+
+* 创建SpringBoot应用，选中我们需要的模块；
+* Spring Boot已经默认将这些场景配置好了，只需要在配置文件中指定少量配置就可以运行起来
+* 自己编写业务代码
+
+自动配置原理？
+
+这个场景Spring Boot给我们配置了什么？能不能修改？能修改哪些配置？能不能扩展？......
+
+```java
+...AutoConfiguration://帮我们给容器中配置组件
+...Properties://配置类来封装配置文件的内容
+```
+
+
+
+### 4.2SpringBoot对静态资源的映射规则
+
+```java
+@ConfigurationProperties(prefix = "spring.resources", ignoreUnknownFields = false)
+public class ResourceProperties {
+//可以设置和资源有关的参数，比如缓存时间
+```
+
+
+
+```java
+@Override
+		public void addResourceHandlers(ResourceHandlerRegistry registry) {
+			if (!this.resourceProperties.isAddMappings()) {
+				logger.debug("Default resource handling disabled");
+				return;
+			}
+			Duration cachePeriod = this.resourceProperties.getCache().getPeriod();
+			CacheControl cacheControl = this.resourceProperties.getCache().getCachecontrol().toHttpCacheControl();
+			if (!registry.hasMappingForPattern("/webjars/**")) {
+				customizeResourceHandlerRegistration(registry.addResourceHandler("/webjars/**")
+						.addResourceLocations("classpath:/META-INF/resources/webjars/")
+						.setCachePeriod(getSeconds(cachePeriod)).setCacheControl(cacheControl));
+			}
+			String staticPathPattern = this.mvcProperties.getStaticPathPattern();
+			if (!registry.hasMappingForPattern(staticPathPattern)) {
+				customizeResourceHandlerRegistration(registry.addResourceHandler(staticPathPattern)
+						.addResourceLocations(getResourceLocations(this.resourceProperties.getStaticLocations()))
+						.setCachePeriod(getSeconds(cachePeriod)).setCacheControl(cacheControl));
+			}
+		}
+		//配置欢迎页映射
+		@Bean
+		public WelcomePageHandlerMapping welcomePageHandlerMapping(ApplicationContext applicationContext,
+				FormattingConversionService mvcConversionService, ResourceUrlProvider mvcResourceUrlProvider) {
+			WelcomePageHandlerMapping welcomePageHandlerMapping = new WelcomePageHandlerMapping(
+					new TemplateAvailabilityProviders(applicationContext), applicationContext, getWelcomePage(),
+					this.mvcProperties.getStaticPathPattern());
+			welcomePageHandlerMapping.setInterceptors(getInterceptors(mvcConversionService, mvcResourceUrlProvider));
+			welcomePageHandlerMapping.setCorsConfigurations(getCorsConfigurations());
+			return welcomePageHandlerMapping;
+		}
+```
+
+1. ==所有/webjars/**的资源，都去classpath:/META-INF/resources/webjars/去找==
+
+   webjars: 以jar包的方式引入静态资源
+
+   ![path](./images/webjars.jpg)
+
+   localhost:8080/webjars/jquery/3.5.1/jquery.js
+
+   https://www.webjars.com/；
+
+```xml
+<dependency>	<!--访问的时候只需要写webjars下面资源的名称即可-->
+    <groupId>org.webjars</groupId>
+    <artifactId>jquery</artifactId>
+    <version>3.5.1</version>
+</dependency>
+```
+
+2. ==“/**”访问当前项目的任何资源,去静态资源的文件夹找。项目中的java目录和resources目录均是类路径的根目录==
+
+```java
+"classpath:/META-INF/resources/",
+"classpath:/resources/", 
+"classpath:/static/", 
+"classpath:/public/"
+//静态资源文件夹存放路径
+```
+
+localhost:8080/abc===去静态资源文件夹里找abc
+
+3. ==欢迎页，静态资源文件夹下的所有index.html页面；被“/**”映射==
+
+   localhost:8080/     找index.html
+   
+4. 
+
+```java
+@ConfigurationProperties(prefix = "spring.resources", ignoreUnknownFields = false)
+public class ResourceProperties {
+
+	private static final String[] CLASSPATH_RESOURCE_LOCATIONS = { "classpath:/META-INF/resources/",
+			"classpath:/resources/", "classpath:/static/", "classpath:/public/" };
+//我们可以在配置文件中更改静态资源文件夹的存放路径
+```
+
+### 4.3模板引擎
+
+jsp, Velocity, Freemarker, Thymeleaf
+
+<img src="./images/templateEngine.png" alt="image-20200819160437336" style="zoom: 50%;" />
+
+Spring推荐使用Thymeleaf；
+
+语法更简单，功能更强大
+
+#### 引入Thymeleaf
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-thymeleaf</artifactId>
+</dependency>
+```
+
+#### Thymeleaf使用&语法
+
+```java
+@ConfigurationProperties(prefix = "spring.thymeleaf")
+public class ThymeleafProperties {
+
+	private static final Charset DEFAULT_ENCODING = StandardCharsets.UTF_8;
+
+	public static final String DEFAULT_PREFIX = "classpath:/templates/";
+
+	public static final String DEFAULT_SUFFIX = ".html";
+//只要我们把html页面放在"classpath:/templates/",thymeleaf就能自动渲染了
+```
+
+* 使用
+
+  导入thymeleaf的名称空间
+
+  ```html
+  <html lang="en" xmlns:th="http://www.thymeleaf.org">
+  ```
+
+* 使用thymeleaf语法
+
+  ```html
+  <!DOCTYPE html>
+  <html lang="en"  xmlns:th="http://www.thymeleaf.org">
+  <head>
+      <meta charset="UTF-8">
+      <title>success</title>
+  </head>
+  <body>
+  <h1>成功！</h1>
+  <!--将div的文本内容设置为-->
+  <div th:text="${hello}">这是显示欢迎信息</div>
+  </body>
+  </html>
+  ```
+
+### 4.4语法规则
+
+1. th:text; 改变当前元素里面的文本内容
+
+   th:任意html属性；见参考文档usingthymeleaf.pdf-10 Attribute Precedence
+
+2. 表达式
+
+   ```properties
+   Simple expressions:(表达式语法)
+       Variable Expressions: ${...}获取变量值 OGNL
+       1.获取对象属性，调用方法
+       2.使用内置的基本对象：
+       	#ctx : the context object.
+           #vars: the context variables.
+           #locale : the context locale.
+           #request : (only in Web Contexts) the HttpServletRequest object.
+           #response : (only in Web Contexts) the HttpServletResponse object.
+           #session : (only in Web Contexts) the HttpSession object.
+           #servletContext : (only in Web Contexts) the ServletContext object.
+           ie. ${session.foo}
+        3.内置的一些工具对象
+           #execInfo : information about the template being processed.
+           #messages : methods for obtaining externalized messages inside variables expressions, in the same way as they would be obtained using #{…} syntax.
+           #uris : methods for escaping parts of URLs/URIs
+           #conversions : methods for executing the configured conversion service (if any).
+           #dates : methods for java.util.Date objects: formatting, component extraction, etc.
+           #calendars : analogous to #dates , but for java.util.Calendar objects.
+           #numbers : methods for formatting numeric objects.
+           #strings : methods for String objects: contains, startsWith, prepending/appending, etc.
+           #objects : methods for objects in general.
+           #bools : methods for boolean evaluation.
+           #arrays : methods for arrays.
+           #lists : methods for lists.
+           #sets : methods for sets.
+           #maps : methods for maps.
+           #aggregates : methods for creating aggregates on arrays or collections.
+           #ids : methods for dealing with id attributes that might be repeated (for example, as a result of an iteration).
+       Selection Variable Expressions: *{...}：选择表达式和${}在功能上一样
+       补充：配合th:object="${session.user}";
+       Message Expressions: #{...}	获取国际化内容
+       Link URL Expressions: @{...}	定义url
+       Fragment Expressions: ~{...}	片段引用表达式
+   Literals(字面量)
+       Text literals: 'one text' , 'Another one!' ,…
+       Number literals: 0 , 34 , 3.0 , 12.3 ,…
+       Boolean literals: true , false
+       Null literal: null
+       Literal tokens: one , sometext , main ,…
+   Text operations:(文本操作)
+       String concatenation: +
+       Literal substitutions: |The name is ${name}|
+   Arithmetic operations:(数学运算)
+       Binary operators: + , - , * , / , %
+       Minus sign (unary operator): -
+   Boolean operations:(布尔运算)
+   Binary operators: and , or
+       Boolean negation (unary operator): ! , not
+   Comparisons and equality:(比较)
+       Comparators: > , < , >= , <= ( gt , lt , ge , le )
+       Equality operators: == , != ( eq , ne )
+   Conditional operators:(条件)
+       If-then: (if) ? (then)
+       If-then-else: (if) ? (then) : (else)
+       Default: (value) ?: (defaultvalue)
+   Special tokens:
+   	No-Operation: _
+   ```
+
+   
 
