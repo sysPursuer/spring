@@ -951,7 +951,7 @@ public class ThymeleafProperties {
   </html>
   ```
 
-### 4.4语法规则
+#### 语法规则
 
 1. th:text; 改变当前元素里面的文本内容
 
@@ -1022,3 +1022,36 @@ public class ThymeleafProperties {
 
    
 
+### 4.4SpringMVC自动配置
+
+[官方文档](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-mvc)
+
+springboot自动配置好了mvc,以下是springboot对springmvc的默认配置
+
+#### Spring MVC Auto-configuration
+
+Spring Boot provides auto-configuration for Spring MVC that works well with most applications.
+
+The auto-configuration adds the following features on top of Spring’s defaults:
+
+- Inclusion of `ContentNegotiatingViewResolver` and `BeanNameViewResolver` beans.
+  - 自动配置了`ViewResolver`(视图解析器：根据方法的返回值得到视图对象(View),视图对象决定如何渲染(转发/重定向？))
+  - `ContentNegotiatingViewResolver`：组合所有的视图解析器
+  - 如何定制：我们可以自己给容器中添加一个视图解析器；`ContentNegotiatingViewResolver`自动的将其组合进来
+- Support for serving static resources, including support for WebJars (covered [later in this document](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-mvc-static-content))).静态资源文件夹路径、webjars
+- Automatic registration of `Converter`, `GenericConverter`, and `Formatter` beans.
+  - `Converter`：转换器；Public String hello(User);类型转换使用Converter
+  - `Formatter` 格式化器：2017-12-12->Date
+  - 自己添加的格式化转换器，，我们只需要放在容器中即可
+- Support for `HttpMessageConverters` (covered [later in this document](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-mvc-message-converters)).
+  - `HttpMessageConverters` ：SpringMvc用来转换Http请求和响应的；user-->json
+- Automatic registration of `MessageCodesResolver` (covered [later in this document](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-message-codes)).
+- Static `index.html` support. 静态首页访问
+- Custom `Favicon` support (covered [later in this document](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-mvc-favicon)). favicon.ioc
+- Automatic use of a `ConfigurableWebBindingInitializer` bean (covered [later in this document](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-mvc-web-binding-initializer)).
+
+If you want to keep those Spring Boot MVC customizations and make more [MVC customizations](https://docs.spring.io/spring/docs/5.2.8.RELEASE/spring-framework-reference/web.html#mvc) (interceptors, formatters, view controllers, and other features), you can add your own `@Configuration` class of type `WebMvcConfigurer` but **without** `@EnableWebMvc`.
+
+If you want to provide custom instances of `RequestMappingHandlerMapping`, `RequestMappingHandlerAdapter`, or `ExceptionHandlerExceptionResolver`, and still keep the Spring Boot MVC customizations, you can declare a bean of type `WebMvcRegistrations` and use it to provide custom instances of those components.
+
+If you want to take complete control of Spring MVC, you can add your own `@Configuration` annotated with `@EnableWebMvc`, or alternatively add your own `@Configuration`-annotated `DelegatingWebMvcConfiguration` as described in the Javadoc of `@EnableWebMvc`.
