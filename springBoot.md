@@ -1035,23 +1035,120 @@ Spring Boot provides auto-configuration for Spring MVC that works well with most
 The auto-configuration adds the following features on top of Spring’s defaults:
 
 - Inclusion of `ContentNegotiatingViewResolver` and `BeanNameViewResolver` beans.
+
   - 自动配置了`ViewResolver`(视图解析器：根据方法的返回值得到视图对象(View),视图对象决定如何渲染(转发/重定向？))
   - `ContentNegotiatingViewResolver`：组合所有的视图解析器
   - 如何定制：我们可以自己给容器中添加一个视图解析器；`ContentNegotiatingViewResolver`自动的将其组合进来
+
 - Support for serving static resources, including support for WebJars (covered [later in this document](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-mvc-static-content))).静态资源文件夹路径、webjars
+
 - Automatic registration of `Converter`, `GenericConverter`, and `Formatter` beans.
+
   - `Converter`：转换器；Public String hello(User);类型转换使用Converter
   - `Formatter` 格式化器：2017-12-12->Date
   - 自己添加的格式化转换器，，我们只需要放在容器中即可
+
 - Support for `HttpMessageConverters` (covered [later in this document](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-mvc-message-converters)).
+
   - `HttpMessageConverters` ：SpringMvc用来转换Http请求和响应的；user-->json
-- Automatic registration of `MessageCodesResolver` (covered [later in this document](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-message-codes)).
+
+  - `HttpMessageConverters` 是从容器中确定；获取所有的`HttpMessageConverter`
+
+    自己给容器中添加`HttpMessageConverter`只需将自己的组件注册容器中 
+
+- Automatic registration of `MessageCodesResolver` (covered [later in this document](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-message-codes)). 定义错误代码生成规则
+
 - Static `index.html` support. 静态首页访问
+
 - Custom `Favicon` support (covered [later in this document](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-mvc-favicon)). favicon.ioc
+
 - Automatic use of a `ConfigurableWebBindingInitializer` bean (covered [later in this document](https://docs.spring.io/spring-boot/docs/2.3.3.RELEASE/reference/htmlsingle/#boot-features-spring-mvc-web-binding-initializer)).
+
+  我们可以配置ConfigurableWebBindingInitializer来替换默认的；(添加到容器中);其作用是
+
+  初始化WebDataBinder，请求数据-->JavaBean
+
+org.framework.boot.autoconfigure.web :web的所有自动场景
+
+
 
 If you want to keep those Spring Boot MVC customizations and make more [MVC customizations](https://docs.spring.io/spring/docs/5.2.8.RELEASE/spring-framework-reference/web.html#mvc) (interceptors, formatters, view controllers, and other features), you can add your own `@Configuration` class of type `WebMvcConfigurer` but **without** `@EnableWebMvc`.
 
 If you want to provide custom instances of `RequestMappingHandlerMapping`, `RequestMappingHandlerAdapter`, or `ExceptionHandlerExceptionResolver`, and still keep the Spring Boot MVC customizations, you can declare a bean of type `WebMvcRegistrations` and use it to provide custom instances of those components.
 
 If you want to take complete control of Spring MVC, you can add your own `@Configuration` annotated with `@EnableWebMvc`, or alternatively add your own `@Configuration`-annotated `DelegatingWebMvcConfiguration` as described in the Javadoc of `@EnableWebMvc`.
+
+#### 扩展springmvc
+
+```xml
+<mvc:view-controller path="/hello" view-name="success"></mvc:view-controller>
+<mvc:interceptors>
+    <mvc:interceptor>
+        <mvc:mapping path="/hello"/>
+        <bean></bean>
+    </mvc:interceptor>
+</mvc:interceptors>
+```
+
+编写一个配置类(@Configuration),是WebMvcConfigurer类型；不能标注@EnableWebMvc
+
+```java
+//使用WebMvcConfigurer可以扩展SpringMVC的功能
+@Configuration
+public class MyMvcConfig implements WebMvcConfigurer {
+    @Override
+    public void addViewControllers(ViewControllerRegistry registry) {
+        registry.addViewController("/sinvie").setViewName("success");
+    }
+}
+```
+
+原理：
+
+1. `WebMvcAutoConfiguration`是Springmvc的自动配置类
+2. 在做其他自动配置时会导入；
+3. 容器中所有的WebMvcConfigurer都一起起作用
+4. 我们的配置类也会被调用
+
+效果；SpringMVC的自动配置和我们的扩展配置都会起作用
+
+#### 全面接管SpringMVC
+
+SpringBoot对SpringMVC的自动配置不需要了，所有都是我们自己配置。我们需要在配置类中添加`@EnableWebMvc`即可。
+
+### 4.5如何修改SpringBoot的默认配置
+
+模式：
+
+1. SpringBoot在自动配置很多组件的时候，先看容器中由于用户自己配置的(@Bean,@Component).如果有就用用户配置的，如果没有才自动配置；如果有些组件可以用多个(ViewResolver)，将用户配置的和自己默认的组合起来；
+
+2. 在做其他自动配置时，@Import(EnableWebMvcConfiguration.class)
+
+   ```java
+   @Configuration(proxyBeanMethods = false)
+   	public static class EnableWebMvcConfiguration extends DelegatingWebMvcConfiguration implements ResourceLoaderAware {
+   .       
+   .
+   .
+   @Configuration(proxyBeanMethods = false)
+   public class DelegatingWebMvcConfiguration extends WebMvcConfigurationSupport {
+   
+   	private final WebMvcConfigurerComposite configurers = new WebMvcConfigurerComposite();
+   
+   	//从容器中获取所有WebMvcConfigurers
+   	@Autowired(required = false)
+   	public void setConfigurers(List<WebMvcConfigurer> configurers) {
+   		if (!CollectionUtils.isEmpty(configurers)) {
+   			this.configurers.addWebMvcConfigurers(configurers);
+               //一个参考实现，将所有的WebMvcConfigurer相关配置都来一起调用
+               /*public void addWebMvcConfigurers(List<WebMvcConfigurer> configurers) {
+                   if (!CollectionUtils.isEmpty(configurers)) {
+                       this.delegates.addAll(configurers);
+                   }
+               }*/
+   		}
+   	}
+   ```
+
+   
+
