@@ -1106,28 +1106,13 @@ public class MyMvcConfig implements WebMvcConfigurer {
 原理：
 
 1. `WebMvcAutoConfiguration`是Springmvc的自动配置类
-2. 在做其他自动配置时会导入；
-3. 容器中所有的WebMvcConfigurer都一起起作用
-4. 我们的配置类也会被调用
 
-效果；SpringMVC的自动配置和我们的扩展配置都会起作用
-
-#### 全面接管SpringMVC
-
-SpringBoot对SpringMVC的自动配置不需要了，所有都是我们自己配置。我们需要在配置类中添加`@EnableWebMvc`即可。
-
-### 4.5如何修改SpringBoot的默认配置
-
-模式：
-
-1. SpringBoot在自动配置很多组件的时候，先看容器中由于用户自己配置的(@Bean,@Component).如果有就用用户配置的，如果没有才自动配置；如果有些组件可以用多个(ViewResolver)，将用户配置的和自己默认的组合起来；
-
-2. 在做其他自动配置时，@Import(EnableWebMvcConfiguration.class)
+2. 在做其他自动配置时，导入@Import(EnableWebMvcConfiguration.class)
 
    ```java
    @Configuration(proxyBeanMethods = false)
    	public static class EnableWebMvcConfiguration extends DelegatingWebMvcConfiguration implements ResourceLoaderAware {
-   .       
+   .
    .
    .
    @Configuration(proxyBeanMethods = false)
@@ -1151,4 +1136,229 @@ SpringBoot对SpringMVC的自动配置不需要了，所有都是我们自己配�
    ```
 
    
+
+   
+
+3. 容器中所有的WebMvcConfigurer都一起起作用
+
+4. 我们的配置类也会被调用
+
+效果；SpringMVC的自动配置和我们的扩展配置都会起作用
+
+#### 全面接管SpringMVC
+
+SpringBoot对SpringMVC的自动配置不需要了，所有都是我们自己配置。我们需要在配置类中添加`@EnableWebMvc`即可，则SpringMVC的自动配置都失效。
+
+原理：
+
+为什么加了`@EnableWebMvc`，自动配置就是失效了？
+
+1. `@EnableWebMvc`的核心
+
+   ```java
+   @Import(DelegatingWebMvcConfiguration.class)
+   public @interface EnableWebMvc {
+   ```
+
+2. 
+
+   ```java
+   @Configuration(proxyBeanMethods = false)
+   public class DelegatingWebMvcConfiguration extends WebMvcConfigurationSupport {
+   
+   ```
+
+3. 
+
+   ```java
+   @Configuration(proxyBeanMethods = false)
+   @ConditionalOnWebApplication(type = Type.SERVLET)
+   @ConditionalOnClass({ Servlet.class, DispatcherServlet.class, WebMvcConfigurer.class })
+   //容器中没有这个组件的时候，这个自动配置类才生效
+   @ConditionalOnMissingBean(WebMvcConfigurationSupport.class)	
+   @AutoConfigureOrder(Ordered.HIGHEST_PRECEDENCE + 10)
+   @AutoConfigureAfter({ DispatcherServletAutoConfiguration.class, TaskExecutionAutoConfiguration.class,
+   		ValidationAutoConfiguration.class })
+   public class WebMvcAutoConfiguration {
+   ```
+
+4. EnableWebMvc将WebMvcConfigurationSupport组件导入进来；
+
+5. 导入的WebMvcConfigurationSupport只是Springmvc的基本功能
+
+### 4.5如何修改SpringBoot的默认配置
+
+模式：
+
+1. SpringBoot在自动配置很多组件的时候，先看容器中由于用户自己配置的(@Bean,@Component).如果有就用用户配置的，如果没有才自动配置；如果有些组件可以用多个(ViewResolver)，将用户配置的和自己默认的组合起来；
+2. 在SpringBoot中会有非常多的xxxConfigurer帮助我们进行扩展配置
+
+
+
+### 4.6Restful CRUD
+
+#### 1.默认访问首页(两种方法，推荐第二种)
+
+* ```java
+    @RequestMapping({"/","/index.html"})
+      public String index(){
+          return "index";
+      }
+  //添加contoller映射
+  ```
+
+* ```java
+  @Configuration
+  public class MyMvcConfig implements WebMvcConfigurer {
+      @Override
+      public void addViewControllers(ViewControllerRegistry registry) {
+          registry.addViewController("/sinvie").setViewName("success");
+      }
+      //所有的WebMvcConfigurer组件都会一起起作用
+      @Bean //将组件注册在容器中
+      public WebMvcConfigurer webMvcConfigurer(){
+          WebMvcConfigurer web = new WebMvcConfigurer(){
+              @Override
+              public void addViewControllers(ViewControllerRegistry registry) {
+                  registry.addViewController("/").setViewName("index");
+                  registry.addViewController("/index.html").setViewName("index");
+              }//添加视图解析器
+          };
+          return web;
+      }
+  }
+  ```
+
+#### 2.国际化
+
+* 编写国际化配置文件
+* 使用ResourceBuildMessageSource管理国际化资源文件
+* 在页面使用fmt:message取出国际化内容
+
+步骤：
+
+1. 编写国际化配置文件，抽取页面需要显示的国际化消息
+
+   <img src="./images/config_inter.jpg" style="zoom:80%;" />
+
+2. SpringBoot自动配置好了管理国际化资源文件的组件
+
+```java
+@EnableConfigurationProperties
+public class MessageSourceAutoConfiguration {
+    
+    
+    @Bean
+	@ConfigurationProperties(prefix = "spring.messages")
+	public MessageSourceProperties messageSourceProperties() {
+		return new MessageSourceProperties();
+	}
+
+	@Bean
+	public MessageSource messageSource(MessageSourceProperties properties) {
+		ResourceBundleMessageSource messageSource = new ResourceBundleMessageSource();
+		if (StringUtils.hasText(properties.getBasename())) {//设置国际化资源文件的基础名(去掉国家代码的)
+			messageSource.setBasenames(StringUtils
+					.commaDelimitedListToStringArray(StringUtils.trimAllWhitespace(properties.getBasename())));
+		}
+		if (properties.getEncoding() != null) {
+			messageSource.setDefaultEncoding(properties.getEncoding().name());
+		}
+		messageSource.setFallbackToSystemLocale(properties.isFallbackToSystemLocale());
+		Duration cacheDuration = properties.getCacheDuration();
+		if (cacheDuration != null) {
+			messageSource.setCacheMillis(cacheDuration.toMillis());
+		}
+		messageSource.setAlwaysUseMessageFormat(properties.isAlwaysUseMessageFormat());
+		messageSource.setUseCodeAsDefaultMessage(properties.isUseCodeAsDefaultMessage());
+		return messageSource;
+	}
+```
+
+3. 去页面获取国际化的值
+
+<img src="./images/encode.jpg" style="zoom: 67%;" />
+
+效果：根据浏览器信息进行切换国际化
+
+原理：
+
+国际化Locale(区域信息对象)；LocaleResolver获取区域信息对象
+
+```java
+		@Bean
+		@ConditionalOnMissingBean
+		@ConditionalOnProperty(prefix = "spring.mvc", name = "locale")
+		public LocaleResolver localeResolver() {
+			if (this.mvcProperties.getLocaleResolver() == WebMvcProperties.LocaleResolver.FIXED) {
+				return new FixedLocaleResolver(this.mvcProperties.getLocale());
+			}
+			AcceptHeaderLocaleResolver localeResolver = new AcceptHeaderLocaleResolver();
+			localeResolver.setDefaultLocale(this.mvcProperties.getLocale());
+			return localeResolver;
+		}
+//默认的就是根据请求头带来的区域信息，获取Locale来进行国际化
+```
+
+4. 点击链接切换国际化
+
+   ```java
+   /**
+    * 可以在链接上携带区域信息
+    */
+   public class MyLocaleResolver implements LocaleResolver {
+   
+       @Override
+       public Locale resolveLocale(HttpServletRequest request) {
+           String l = request.getParameter("l");
+           Locale locale = Locale.getDefault();
+           if(!StringUtils.isEmpty(l)){
+               String[] s = l.split("_");
+               locale = new Locale(s[0], s[1]);
+           }
+           return locale;
+       }
+   
+       @Override
+       public void setLocale(HttpServletRequest request, HttpServletResponse response, Locale locale) {
+   
+       }
+   }
+   
+   	//添加进组件
+   	@Bean
+       public LocaleResolver localeResolver(){
+           return new MyLocaleResolver();
+       }
+   
+   ```
+
+   
+
+#### 3.登陆
+
+开发期间模板引擎页面修改后，要实时生效
+
+1. 禁用2模板引擎的缓存
+
+   ```xml
+   #禁用缓存
+   spring.thymeleaf.cache=false
+   ```
+
+2. 页面修改完成后ctrl+F9,重新编译
+
+
+
+登陆错误消息的显示
+
+```html
+<p style="color:red" th:text="${msg}" th:if="${not #strings.isEmpty(msg)}"></p>
+```
+
+
+
+#### 4.拦截器进行登陆检查
+
+
 
